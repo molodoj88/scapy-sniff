@@ -16,6 +16,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.main_widget = QtWidgets.QWidget()
         self.setCentralWidget(self.main_widget)
         self.init_table(self.main_widget)
+        self.init_toolbar()
         self.show()
 
     def init_table(self, widget):
@@ -30,7 +31,14 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.table)
 
     def init_toolbar(self):
-        self.addToolBar('Start')
+        startAction = QtWidgets.QAction(QtGui.QIcon('images/play-button-icon.png'), 'Start', self)
+        startAction.triggered.connect(self.startButtonClicked)
+        self.toolbar = self.addToolBar('Start')
+        self.toolbar.addAction(startAction)
+
+
+    def startButtonClicked(self):
+        print('Start button pressed')
 
 
 class MyModel(QtCore.QAbstractTableModel):
