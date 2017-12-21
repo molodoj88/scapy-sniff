@@ -58,7 +58,6 @@ class MyModel(QtCore.QAbstractTableModel):
                 if index.columns() == i:
                     return self.flows[index.row()][self.columnNames[i]]
 
-
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role != Qt.DisplayRole:
             return None
@@ -73,8 +72,10 @@ class MyModel(QtCore.QAbstractTableModel):
     def insertRows(self, pos=0, count=1, parent=None):
         self.beginInsertRows(QModelIndex(), pos, pos + count - 1)
 
+        rowToInsert = dict(zip(self.columnNames, [""] * self.columnCount()))
+
         for row in range(count):
-            self.flows.insert(row + pos, {"1": "", "2": "", "3": "", "4": ""})
+            self.flows.insert(row + pos, rowToInsert)
 
         self.endInsertRows()
         return True
@@ -85,16 +86,11 @@ class MyModel(QtCore.QAbstractTableModel):
 
         if index.isValid() and 0 <= index.row() < len(self.flows):
             flow = self.flows[index.row()]
-            ic = index.column()
 
-            if ic == 0:
-                flow["1"] = value
-            elif ic == 1:
-                flow["2"] = value
-            elif ic == 2:
-                flow["3"] = value
-            elif ic == 3:
-                flow["4"] = value
+            for i in range(self.columnCount()):
+                if index.column() == i:
+                    flow[self.columnNames[i]] = value
+                    return True
 
             self.dataChanged.emit(index, index)
             return True
