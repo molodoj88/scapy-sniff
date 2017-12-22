@@ -2,13 +2,27 @@ import sys
 from PyQt5 import QtCore, QtWidgets, QtGui
 from PyQt5.QtCore import Qt, QModelIndex
 import logging
+from sp import Sniffer
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    signal_start_sniffer = QtCore.pyqtSignal()
+
     def __init__(self, parent=None):
         super(MainWindow, self).__init__(parent)
 
         self.init_ui()
+
+        self.worker = Sniffer()
+        self.sniffer_thread = QtCore.QThread()
+        self.worker.moveToThread(self.sniffer_thread)
+
+        self.signal_start_sniffer.connect(self.worker.do_sniff)
+        self.worker.signal_send_msg.connect(self.log_message)
+
+    def start_sniff(self):
+        self.sniffer_thread.start()
+        self.signal_start_sniffer.emit()
 
     def init_ui(self):
         self.resize(800, 600)
@@ -51,7 +65,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.toolbar.addAction(self.hide_log_action)
 
     def start_button_clicked(self):
-        self.log_message('Start button pressed')
+        self.log_message('Start sniffing')
+        self.start_sniff()
 
     def log_message(self, msg):
         """
@@ -73,8 +88,8 @@ class MainWindow(QtWidgets.QMainWindow):
 class MyModel(QtCore.QAbstractTableModel):
     def __init__(self, parent=None):
         super(MyModel, self).__init__(parent)
-        self.flows = []
         self.columnNames = ['Source IP: port', 'Destination IP: port', 'Packet Count']
+        self.flows = [dict(zip(self.columnNames, ("192.168.10.1", "10.1.2.5", "223")))]
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.flows)
