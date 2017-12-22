@@ -1,7 +1,7 @@
 import sys
 from PyQt5 import QtCore, QtWidgets, QtGui
 from PyQt5.QtCore import Qt, QModelIndex
-from PyQt5.QtCore import QThread
+import logging
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -14,13 +14,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(800, 600)
         self.setWindowTitle('Sniffer')
         self.main_widget = QtWidgets.QWidget()
+        self.main_layout = QtWidgets.QVBoxLayout(self.main_widget)
         self.setCentralWidget(self.main_widget)
-        self.init_table(self.main_widget)
+        self.init_table(self.main_layout)
         self.init_toolbar()
+        self.init_log(self.main_layout)
         self.show()
 
-    def init_table(self, widget):
-        layout = QtWidgets.QHBoxLayout(widget)
+    def init_table(self, layout):
         self.model = MyModel()
         self.table = QtWidgets.QTableView()
         header = self.table.horizontalHeader()
@@ -30,15 +31,43 @@ class MainWindow(QtWidgets.QMainWindow):
         self.table.setModel(self.model)
         layout.addWidget(self.table)
 
+    def init_log(self, layout):
+        self.log_visible = True
+        self.logger = TextLogger(self)
+        self.logger.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', "%Y-%m-%d %H:%M:%S"))
+        logging.getLogger().addHandler(self.logger)
+        logging.getLogger().setLevel(logging.DEBUG)
+        layout.addWidget(self.logger.widget)
+
     def init_toolbar(self):
-        startAction = QtWidgets.QAction(QtGui.QIcon('images/play-button-icon.png'), 'Start', self)
-        startAction.triggered.connect(self.startButtonClicked)
         self.toolbar = self.addToolBar('Start')
-        self.toolbar.addAction(startAction)
+        # Кнопка запуска
+        start_action = QtWidgets.QAction(QtGui.QIcon('images/play-button-icon.png'), 'Start', self)
+        start_action.triggered.connect(self.start_button_clicked)
+        self.toolbar.addAction(start_action)
+        # Скрыть/показать лог
+        self.hide_log_action = QtWidgets.QAction(QtGui.QIcon('images/hide-log-button-icon.png'), 'Hide/Show log', self)
+        self.hide_log_action.triggered.connect(self.hide_log_button_clicked)
+        self.toolbar.addAction(self.hide_log_action)
 
+    def start_button_clicked(self):
+        self.log_message('Start button pressed')
 
-    def startButtonClicked(self):
-        print('Start button pressed')
+    def log_message(self, msg):
+        """
+        Везде, где нужно вывести сообщение в лог, вызываем эту функцию
+        """
+        logging.debug(msg)
+
+    def hide_log_button_clicked(self):
+        if self.log_visible:
+            self.log_visible = False
+            self.logger.widget.setVisible(False)
+            self.hide_log_action.setChecked(True)
+        else:
+            self.log_visible = True
+            self.logger.widget.setVisible(True)
+            self.hide_log_action.setChecked(False)
 
 
 class MyModel(QtCore.QAbstractTableModel):
@@ -104,6 +133,24 @@ class MyModel(QtCore.QAbstractTableModel):
             return True
 
         return False
+
+
+class TextLogger(logging.Handler):
+    """
+    Handler for logger
+    """
+    def __init__(self, parent):
+        logging.Handler.__init__(self)
+        self.widget = QtWidgets.QGroupBox('Log')
+        layout = QtWidgets.QVBoxLayout(self.widget)
+        self.text_widget = QtWidgets.QTextEdit()
+        self.text_widget.setReadOnly(True)
+        layout.addWidget(self.text_widget)
+
+    def emit(self, record):
+        msg = self.format(record)
+        self.text_widget.append(msg)
+
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
