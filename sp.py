@@ -4,27 +4,26 @@ from PyQt5 import QtCore
 
 
 class Sniffer(QObject):
-    signal_send_msg = QtCore.pyqtSignal(str)
+    signal_pkt_received = QtCore.pyqtSignal(list)
 
-    def __init__(self, parent=None):
+    def __init__(self, interface='enp4s0f1', parent=None):
         super(Sniffer, self).__init__(parent)
+        self.interface = interface
 
     @QtCore.pyqtSlot()
     def do_sniff(self):
-        self.signal_send_msg.emit("Hello, log!")
-        sniff(iface='enp4s0f1', prn=self.cb, count=5, filter="tcp")
+        sniff(iface=self.interface, prn=self.cb, count=5000, filter="tcp")
 
     def cb(self, pkt):
+        ip_src = pkt.sprintf("%IP.src%")
+        ip_dst = pkt.sprintf("%IP.dst%")
         tcp_sport = pkt.sprintf("%TCP.sport%")
         tcp_dport = pkt.sprintf("%TCP.dport%")
         if tcp_sport in TCP_SERVICES:
             tcp_sport = TCP_SERVICES[tcp_sport]
         if tcp_dport in TCP_SERVICES:
             tcp_dport = TCP_SERVICES[tcp_dport]
-        packet_desc = pkt.sprintf("{}: %IP.src%\n{}: %IP.dst%\n{}: {}\n{}: {}\n".format('IP src',
-                                                                              'IP dst',
-                                                                              'TCP source port',
-                                                                              tcp_sport,
-                                                                              'TCP dest port',
-                                                                              tcp_dport))
-        self.signal_send_msg.emit(packet_desc.replace("\n", "; "))
+
+        pkt_desc = [ip_src, ip_dst, tcp_sport, tcp_dport]
+
+        self.signal_pkt_received.emit(pkt_desc)

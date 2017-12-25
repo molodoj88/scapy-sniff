@@ -13,16 +13,41 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.init_ui()
 
+        # Открываем поток для сниффера
         self.worker = Sniffer()
         self.sniffer_thread = QtCore.QThread()
         self.worker.moveToThread(self.sniffer_thread)
 
         self.signal_start_sniffer.connect(self.worker.do_sniff)
-        self.worker.signal_send_msg.connect(self.log_message)
+        self.worker.signal_pkt_received.connect(self.update_flows)
 
     def start_sniff(self):
         self.sniffer_thread.start()
         self.signal_start_sniffer.emit()
+
+    def update_flows(self, pkt):
+        '''
+        Обновляем словарик с потоками при получении нового пакета
+        :param pkt: список [ip источника, ip назначения, порт источника, порт назначения]
+        '''
+        # потоки
+        flows = list(self.model.flows.keys())
+
+        # проверяем, нет ли такого потока уже
+        # если есть, прибавляем к счётчику пакетов 1
+        # если нет, добавляем новый поток
+        flow_desc = ((pkt[0], pkt[1]), (pkt[2], pkt[3]))
+        if flow_desc in flows:
+            self.model.flows[flow_desc]['count'] += 1
+            topLeft = self.model.createIndex(self.model.flows[flow_desc]['id'], 2)
+            self.model.dataChanged.emit(topLeft, topLeft)
+        else:
+            self.model.flows[flow_desc] = {'id': self.model.flow_id, 'count': 1}
+            self.model.insertRows(len(self.model.flows) - 1, 1)
+            topLeft = self.model.createIndex(self.model.flows[flow_desc]['id'], 0)
+            bottomRight = self.model.createIndex(self.model.flows[flow_desc]['id'], 2)
+            self.model.dataChanged.emit(topLeft, bottomRight)
+            self.model.flow_id += 1
 
     def init_ui(self):
         self.resize(800, 600)
@@ -36,7 +61,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show()
 
     def init_table(self, layout):
-        self.model = MyModel()
+        self.model = MyModel(logger=self.log_message)
         self.table = QtWidgets.QTableView()
         header = self.table.horizontalHeader()
         header.setStretchLastSection(True)
@@ -86,10 +111,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 class MyModel(QtCore.QAbstractTableModel):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, logger=None):
         super(MyModel, self).__init__(parent)
-        self.columnNames = ['Source IP: port', 'Destination IP: port', 'Packet Count']
-        self.flows = [dict(zip(self.columnNames, ("192.168.10.1", "10.1.2.5", "223")))]
+        self.columnNames = ['Source', 'Destination', 'Count']
+        self.flows = {}
+        self.flow_id = 0
+        self.logger = logger
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.flows)
@@ -99,21 +126,20 @@ class MyModel(QtCore.QAbstractTableModel):
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
+            self.logger('not valid')
             return None
-
-        if 0 <= index.row() < len(self.flows):
-            return None
-
         if role == Qt.DisplayRole:
-
-            for i in range(self.columnCount()):
-                if index.columns() == i:
-                    return self.flows[index.row()][self.columnNames[i]]
+            flow_desc = self.get_flow_by_id(self.flows, index.row())
+            if index.column() == 0:
+                return "{}: {}".format(flow_desc[0][0], flow_desc[1][0])
+            if index.column() == 1:
+                return "{}: {}".format(flow_desc[0][1], flow_desc[1][1])
+            if index.column() == 2:
+                return str(self.flows[flow_desc]["count"])
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role != Qt.DisplayRole:
             return None
-
         if orientation == Qt.Horizontal:
             for i in range(self.columnCount()):
                 if section == i:
@@ -123,31 +149,14 @@ class MyModel(QtCore.QAbstractTableModel):
 
     def insertRows(self, pos=0, count=1, parent=None):
         self.beginInsertRows(QModelIndex(), pos, pos + count - 1)
-
-        rowToInsert = dict(zip(self.columnNames, [""] * self.columnCount()))
-
-        for row in range(count):
-            self.flows.insert(row + pos, rowToInsert)
-
         self.endInsertRows()
         return True
 
-    def setData(self, index, value, role=Qt.EditRole):
-        if role != Qt.EditRole:
-            return False
-
-        if index.isValid() and 0 <= index.row() < len(self.flows):
-            flow = self.flows[index.row()]
-
-            for i in range(self.columnCount()):
-                if index.column() == i:
-                    flow[self.columnNames[i]] = value
-                    return True
-
-            self.dataChanged.emit(index, index)
-            return True
-
-        return False
+    def get_flow_by_id(self, d, id):
+        # получаем ключ для потока по его id
+        for k, v in d.items():
+            if v['id'] == id:
+                return k
 
 
 class TextLogger(logging.Handler):
