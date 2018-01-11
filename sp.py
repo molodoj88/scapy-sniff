@@ -6,7 +6,7 @@ from PyQt5 import QtCore
 class Sniffer(QObject):
     signal_pkt_received = QtCore.pyqtSignal(list)
 
-    def __init__(self, interface='enp4s0f1', parent=None):
+    def __init__(self, interface='wlp3s0', parent=None):
         super(Sniffer, self).__init__(parent)
         self.interface = interface
 

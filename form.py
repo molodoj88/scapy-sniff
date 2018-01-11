@@ -1,6 +1,7 @@
 import sys
 from PyQt5 import QtCore, QtWidgets, QtGui
-from PyQt5.QtCore import Qt, QModelIndex
+from PyQt5.QtCore import Qt, QModelIndex, QElapsedTimer
+from PyQt5.QtNetwork import QNetworkInterface
 import logging
 from sp import Sniffer
 
@@ -20,9 +21,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.signal_start_sniffer.connect(self.worker.do_sniff)
         self.worker.signal_pkt_received.connect(self.update_flows)
+        for iface in QNetworkInterface.allInterfaces():
+            self.log_message(iface.name())
+
+        self.timer = QElapsedTimer()
 
     def start_sniff(self):
         self.sniffer_thread.start()
+        self.timer_start = self.timer.elapsed()
         self.signal_start_sniffer.emit()
 
     def update_flows(self, pkt):
@@ -30,6 +36,7 @@ class MainWindow(QtWidgets.QMainWindow):
         Обновляем словарик с потоками при получении нового пакета
         :param pkt: список [ip источника, ip назначения, порт источника, порт назначения]
         '''
+        self.log_message("{} s".format((self.timer_start - self.timer.elapsed()) / 1000))
         # потоки
         flows = list(self.model.flows.keys())
 
