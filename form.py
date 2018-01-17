@@ -4,6 +4,9 @@ from PyQt5.QtCore import Qt, QModelIndex, QElapsedTimer
 from PyQt5.QtNetwork import QNetworkInterface
 import logging
 from sp import Sniffer
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from PyQt5.QtWidgets import QSizePolicy
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -64,7 +67,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.model.flow_id += 1
 
     def init_ui(self):
-        self.resize(800, 600)
+        self.resize(1000, 800)
         self.setWindowTitle('Sniffer')
         self.main_widget = QtWidgets.QWidget()
         self.main_layout = QtWidgets.QVBoxLayout(self.main_widget)
@@ -76,13 +79,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def init_table(self, layout):
         self.model = MyModel(logger=self.log_message)
-        self.table = QtWidgets.QTableView()
+        self.table = MyView()
         header = self.table.horizontalHeader()
         header.setStretchLastSection(True)
         header.setMinimumSectionSize(200)
         self.table.resizeColumnsToContents()
         self.table.setModel(self.model)
         layout.addWidget(self.table)
+        self.table.context_menu_pressed.connect(self.on_context_menu_pressed)
+
+    def on_context_menu_pressed(self, event):
+        index = self.table.indexAt(event.pos())
+        flow_id = index.row()
+        flow = self.model.get_flow_by_id(flow_id)
+        data = self.model.flows[flow]['timestamp_list']
+        modal_window = ModalPlotWindow(self)
+        modal_window.setWindowTitle('Гистограмма')
+        title = "Распределение интервалов между пакетами для потока\n{}:{}->{}:{}".format(flow[0][0],
+                                                                           flow[1][0],
+                                                                           flow[0][1],
+                                                                           flow[1][1])
+        modal_window.canvas.plot_histogram(title, data)
+        modal_window.show()
 
     def init_log(self, layout):
         self.log_visible = True
@@ -124,6 +142,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self.hide_log_action.setChecked(False)
 
 
+class MyView(QtWidgets.QTableView):
+    context_menu_pressed = QtCore.pyqtSignal(QtCore.QEvent)
+
+    def __init__(self, parent=None):
+        super(MyView, self).__init__(parent=parent)
+
+    def contextMenuEvent(self, event):
+        menu = QtWidgets.QMenu()
+        open_plot_window_action = menu.addAction("Построить графики для потока")
+        action = menu.exec_(event.globalPos())
+        if action == open_plot_window_action:
+            self.context_menu_pressed.emit(event)
+
+
 class MyModel(QtCore.QAbstractTableModel):
     def __init__(self, parent=None, logger=None):
         super(MyModel, self).__init__(parent)
@@ -143,7 +175,7 @@ class MyModel(QtCore.QAbstractTableModel):
             self.logger('not valid')
             return None
         if role == Qt.DisplayRole:
-            flow_desc = self.get_flow_by_id(self.flows, index.row())
+            flow_desc = self.get_flow_by_id(index.row())
             if index.column() == 0:
                 return "{}: {}".format(flow_desc[0][0], flow_desc[1][0])
             if index.column() == 1:
@@ -155,7 +187,6 @@ class MyModel(QtCore.QAbstractTableModel):
             if index.column() == 4:
                 min_timestamp = min(self.flows[flow_desc]['timestamp_list'])
                 max_timestamp = max(self.flows[flow_desc]['timestamp_list'])
-                self.logger((max_timestamp, min_timestamp))
                 return str(self.flows[flow_desc]['data_len'] / max_timestamp - min_timestamp)
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
@@ -173,9 +204,9 @@ class MyModel(QtCore.QAbstractTableModel):
         self.endInsertRows()
         return True
 
-    def get_flow_by_id(self, d, id):
+    def get_flow_by_id(self, id):
         # получаем ключ для потока по его id
-        for k, v in d.items():
+        for k, v in self.flows.items():
             if v['id'] == id:
                 return k
 
@@ -195,6 +226,36 @@ class TextLogger(logging.Handler):
     def emit(self, record):
         msg = self.format(record)
         self.text_widget.append(msg)
+
+
+class PlotCanvas(FigureCanvas):
+    def __init__(self, parent=None, width=5, height=4, dpi=100):
+        fig = Figure(figsize=(width, height), dpi=dpi)
+
+        FigureCanvas.__init__(self, fig)
+        self.setParent(parent)
+
+        FigureCanvas.setSizePolicy(self,
+                                   QSizePolicy.Expanding,
+                                   QSizePolicy.Expanding)
+        FigureCanvas.updateGeometry(self)
+
+    def plot_histogram(self, title, data):
+        ax = self.figure.add_subplot(111)
+        ax.grid()
+        ax.hist(data, normed=True)
+        ax.set_title(title)
+        self.draw()
+
+
+class ModalPlotWindow(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super(ModalPlotWindow, self).__init__(parent)
+        self.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.WindowSystemMenuHint)
+        self.setWindowModality(QtCore.Qt.WindowModal)
+        layout = QtWidgets.QVBoxLayout(self)
+        self.canvas = PlotCanvas(self)
+        layout.addWidget(self.canvas)
 
 
 if __name__ == "__main__":
