@@ -6,24 +6,28 @@ from PyQt5 import QtCore
 class Sniffer(QObject):
     signal_pkt_received = QtCore.pyqtSignal(list)
 
-    def __init__(self, interface='wlp3s0', parent=None):
+    def __init__(self, interface='enp4s0f1', parent=None):
         super(Sniffer, self).__init__(parent)
         self.interface = interface
 
     @QtCore.pyqtSlot()
     def do_sniff(self):
-        sniff(iface=self.interface, prn=self.cb, count=5000, filter="tcp")
+        sniff(iface=self.interface, prn=self.cb, count=200, filter="tcp")
 
     def cb(self, pkt):
         ip_src = pkt.sprintf("%IP.src%")
         ip_dst = pkt.sprintf("%IP.dst%")
         tcp_sport = pkt.sprintf("%TCP.sport%")
         tcp_dport = pkt.sprintf("%TCP.dport%")
+        try:
+            segment_len = len(pkt['TCP'].payload)
+        except IndexError:
+            segment_len = len(pkt['IP'].payload) - 20
         if tcp_sport in TCP_SERVICES:
             tcp_sport = TCP_SERVICES[tcp_sport]
         if tcp_dport in TCP_SERVICES:
             tcp_dport = TCP_SERVICES[tcp_dport]
 
-        pkt_desc = [ip_src, ip_dst, tcp_sport, tcp_dport]
+        pkt_desc = [ip_src, ip_dst, tcp_sport, tcp_dport, segment_len]
 
         self.signal_pkt_received.emit(pkt_desc)

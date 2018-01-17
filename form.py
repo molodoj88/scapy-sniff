@@ -34,9 +34,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_flows(self, pkt):
         '''
         Обновляем словарик с потоками при получении нового пакета
-        :param pkt: список [ip источника, ip назначения, порт источника, порт назначения]
+        :param pkt: список [ip источника, ip назначения, порт источника, порт назначения, длина сегмента]
         '''
-        self.log_message("{} s".format((self.timer_start - self.timer.elapsed()) / 1000))
+        timestamp = (-self.timer_start + self.timer.elapsed()) / 1000
         # потоки
         flows = list(self.model.flows.keys())
 
@@ -44,12 +44,19 @@ class MainWindow(QtWidgets.QMainWindow):
         # если есть, прибавляем к счётчику пакетов 1
         # если нет, добавляем новый поток
         flow_desc = ((pkt[0], pkt[1]), (pkt[2], pkt[3]))
+        segment_len = pkt[4]
         if flow_desc in flows:
             self.model.flows[flow_desc]['count'] += 1
+            self.model.flows[flow_desc]['len_seq'].append(segment_len,)
+            self.model.flows[flow_desc]['data_len'] += segment_len
+            self.model.flows[flow_desc]['timestamp_list'].append(timestamp)
             topLeft = self.model.createIndex(self.model.flows[flow_desc]['id'], 2)
             self.model.dataChanged.emit(topLeft, topLeft)
         else:
-            self.model.flows[flow_desc] = {'id': self.model.flow_id, 'count': 1}
+            self.model.flows[flow_desc] = {'id': self.model.flow_id, 'count': 1,
+                                           'len_seq': [segment_len, ],
+                                           'data_len': segment_len,
+                                           'timestamp_list': [timestamp, ]}
             self.model.insertRows(len(self.model.flows) - 1, 1)
             topLeft = self.model.createIndex(self.model.flows[flow_desc]['id'], 0)
             bottomRight = self.model.createIndex(self.model.flows[flow_desc]['id'], 2)
@@ -120,7 +127,7 @@ class MainWindow(QtWidgets.QMainWindow):
 class MyModel(QtCore.QAbstractTableModel):
     def __init__(self, parent=None, logger=None):
         super(MyModel, self).__init__(parent)
-        self.columnNames = ['Source', 'Destination', 'Count']
+        self.columnNames = ['Source', 'Destination', 'Count', 'Mean length', 'Ave. speed']
         self.flows = {}
         self.flow_id = 0
         self.logger = logger
@@ -143,6 +150,13 @@ class MyModel(QtCore.QAbstractTableModel):
                 return "{}: {}".format(flow_desc[0][1], flow_desc[1][1])
             if index.column() == 2:
                 return str(self.flows[flow_desc]["count"])
+            if index.column() == 3:
+                return str(self.flows[flow_desc]['data_len'] / len(self.flows[flow_desc]['len_seq']))
+            if index.column() == 4:
+                min_timestamp = min(self.flows[flow_desc]['timestamp_list'])
+                max_timestamp = max(self.flows[flow_desc]['timestamp_list'])
+                self.logger((max_timestamp, min_timestamp))
+                return str(self.flows[flow_desc]['data_len'] / max_timestamp - min_timestamp)
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role != Qt.DisplayRole:
